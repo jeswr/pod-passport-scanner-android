@@ -12,11 +12,26 @@ android {
         applicationId = "org.jeswr.podpassport"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
+        // Bumped per CI run on release builds so each APK installs over the last.
+        versionCode = (System.getenv("ANDROID_VERSION_CODE") ?: "1").toInt()
         versionName = "0.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
+    }
+
+    // Release signing is configured only when the keystore env is present (the
+    // release workflow provides it); local/CI `assembleRelease` stays unsigned.
+    val releaseKeystore = System.getenv("ANDROID_KEYSTORE_PATH")
+    signingConfigs {
+        if (releaseKeystore != null) {
+            create("release") {
+                storeFile = file(releaseKeystore)
+                storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("ANDROID_KEY_ALIAS")
+                keyPassword = System.getenv("ANDROID_KEY_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
@@ -26,6 +41,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+            signingConfig = signingConfigs.findByName("release")
         }
     }
 

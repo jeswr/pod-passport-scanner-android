@@ -1,0 +1,79 @@
+name: Release APK
+
+# On a version tag (`git tag v0.1.0 && git push origin v0.1.0`), builds a signed
+# release APK and attaches it to a GitHub Release for sideloading. Free Ubuntu
+# runner (public repo). Needs four repo secrets — see the release steps in the
+# README:
+#   ANDROID_KEYSTORE_BASE64 · ANDROID_KEYSTORE_PASSWORD · ANDROID_KEY_ALIAS · ANDROID_KEY_PASSWORD
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write # create the release + upload the APK asset
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Require a tag ref
+        run: |
+          case "$GITHUB_REF" in
+            refs/tags/*) echo "tag: $GITHUB_REF_NAME" ;;
+            *) echo "::error::Run this from a tag (refs/tags/vX.Y.Z)"; exit 1 ;;
+          esac
+
+      - name: Guard — signing secrets present
+        run: |
+          for v in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            if [ -z "${!v}" ]; then echo "::error::missing secret $v"; exit 1; fi
+          done
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Decode keystore
+        run: echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.keystore"
+
+      - name: Build signed release APK
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/release.keystore
+          ANDROID_VERSION_CODE: ${{ github.run_number }}
+        run: ./gradlew :app:assembleRelease --no-daemon
+
+      - name: Stage APK
+        run: |
+          APK=$(find app/build/outputs/apk/release -name "*.apk" ! -name "*unsigned*" | head -1)
+          if [ -z "$APK" ]; then echo "::error::no signed APK produced"; ls -R app/build/outputs/apk; exit 1; fi
+          cp "$APK" "pod-passport-scanner-${GITHUB_REF_NAME}.apk"
+          echo "staged pod-passport-scanner-${GITHUB_REF_NAME}.apk"
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          NOTES="Experimental build — research/reference only, not security-audited.
+
+          **Install (sideload):** on your Android phone, allow installing from this source, then open the downloaded \`.apk\`. Real passport NFC requires a physical device.
+
+          Hand-off contract and flow: see the README."
+          gh release create "$GITHUB_REF_NAME" \
+            "pod-passport-scanner-${GITHUB_REF_NAME}.apk" \
+            --title "$GITHUB_REF_NAME" \
+            --notes "$NOTES" \
+          || gh release upload "$GITHUB_REF_NAME" \
+            "pod-passport-scanner-${GITHUB_REF_NAME}.apk" --clobber

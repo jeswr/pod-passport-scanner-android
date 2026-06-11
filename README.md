@@ -113,6 +113,45 @@ GitHub Actions (`.github/workflows/ci.yml`): Ubuntu runner, JDK 17, Android
 SDK, then `assembleDebug` + `testDebugUnitTest` (unit + Robolectric Compose
 flow test — no NFC/camera hardware needed).
 
+## Releasing a signed APK
+
+`.github/workflows/release.yml` builds a **signed release APK** and attaches it
+to a GitHub Release on every version tag — anyone can then download and sideload
+it (no app store needed). One-time setup:
+
+1. **Generate an upload keystore** (keep it safe — re-signing with a different
+   key means existing installs can't update):
+
+   ```sh
+   keytool -genkeypair -v -keystore release.keystore \
+     -alias podpassport -keyalg RSA -keysize 2048 -validity 10000
+   ```
+
+2. **Add four repo secrets** (Settings → Secrets and variables → Actions):
+
+   | Secret | Value |
+   |---|---|
+   | `ANDROID_KEYSTORE_BASE64` | `base64 -i release.keystore` (paste the output) |
+   | `ANDROID_KEYSTORE_PASSWORD` | the store password from step 1 |
+   | `ANDROID_KEY_ALIAS` | `podpassport` |
+   | `ANDROID_KEY_PASSWORD` | the key password from step 1 |
+
+   With `gh`:
+
+   ```sh
+   R=jeswr/pod-passport-scanner-android
+   base64 -i release.keystore | gh secret set ANDROID_KEYSTORE_BASE64 --repo "$R"
+   gh secret set ANDROID_KEYSTORE_PASSWORD --repo "$R"   # prompts for the value
+   gh secret set ANDROID_KEY_ALIAS --repo "$R" --body podpassport
+   gh secret set ANDROID_KEY_PASSWORD --repo "$R"        # prompts for the value
+   ```
+
+3. **Cut a release:** `git tag v0.1.0 && git push origin v0.1.0`. The signed APK
+   appears under the repo's Releases. (`versionCode` is set from the CI run
+   number so each build installs over the previous one.) Local
+   `./gradlew assembleRelease` without the keystore still produces the usual
+   unsigned APK.
+
 ## Licences
 
 - [jMRTD](https://jmrtd.org) — LGPL; [SCUBA](https://scuba.sourceforge.net) —
