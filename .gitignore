@@ -1,0 +1,25 @@
+# Gradle / Android build output
+.gradle/
+build/
+app/build/
+captures/
+*.apk
+*.aab
+*.ap_
+*.dex
+*.class
+
+# Local SDK location — machine-specific
+local.properties
+
+# IDE
+.idea/
+*.iml
+.DS_Store
+
+# Keystores / secrets (none committed)
+*.jks
+*.keystore
+
+# Kotlin daemon
+.kotlin/
